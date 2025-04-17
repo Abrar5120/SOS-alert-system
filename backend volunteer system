@@ -1,0 +1,135 @@
+// server.js
+import express from "express";
+import mongoose from "mongoose";
+import dotenv from "dotenv";
+import cors from "cors";
+
+import authRoutes from "./routes/authRoutes.js";
+import volunteerRoutes from "./routes/volunteerRoutes.js";
+
+dotenv.config();
+
+const app = express();
+
+app.use(express.json());
+app.use(cors());
+
+// Database connection
+mongoose.connect(process.env.MONGO_URI, {
+  useNewUrlParser: true,
+  useUnifiedTopology: true,
+}).then(() => console.log("Connected to MongoDB"))
+  .catch((err) => console.error("Failed to connect to MongoDB", err));
+
+// Routes
+app.use("/api/auth", authRoutes);
+app.use("/api/volunteer", volunteerRoutes);
+
+const PORT = process.env.PORT || 5000;
+app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+
+
+// models/Volunteer.js
+import mongoose from "mongoose";
+
+// Volunteer Registration Schema
+const volunteerSchema = new mongoose.Schema({
+  name: String,
+  email: { type: String, unique: true },
+  phone: String,
+  address: String, // Address Verification
+  idProofUrl: String, // ID Verification
+  verified: { type: Boolean, default: false }, // Admin will verify
+  isAvailable: { type: Boolean, default: true },
+  acceptedSOS: [{ type: mongoose.Schema.Types.ObjectId, ref: "SOSAlert" }],
+}, { timestamps: true });
+
+export default mongoose.model("Volunteer", volunteerSchema);
+
+
+// models/SOSAlert.js
+import mongoose from "mongoose";
+
+// SOS Alert Schema for tracking alerts and volunteer response
+const sosAlertSchema = new mongoose.Schema({
+  userLocation: {
+    lat: Number,
+    lng: Number
+  },
+  message: String,
+  status: { type: String, enum: ["pending", "accepted", "declined", "resolved"], default: "pending" },
+  assignedVolunteer: { type: mongoose.Schema.Types.ObjectId, ref: "Volunteer" },
+}, { timestamps: true });
+
+export default mongoose.model("SOSAlert", sosAlertSchema);
+
+
+// controllers/volunteerController.js
+import Volunteer from "../models/Volunteer.js";
+import SOSAlert from "../models/SOSAlert.js";
+
+// Volunteer Registration Handler
+export const registerVolunteer = async (req, res) => {
+  try {
+    const volunteer = new Volunteer(req.body);
+    await volunteer.save();
+    res.status(201).json({ message: "Volunteer registered", volunteer });
+  } catch (err) {
+    res.status(500).json({ message: "Error registering volunteer", error: err });
+  }
+};
+
+// Get Pending SOS Alerts - For Volunteers to view available help requests
+export const getSOSAlerts = async (req, res) => {
+  try {
+    const alerts = await SOSAlert.find({ status: "pending" });
+    res.status(200).json(alerts);
+  } catch (err) {
+    res.status(500).json({ message: "Error fetching SOS alerts", error: err });
+  }
+};
+
+// Accept or Decline SOS - Volunteer chooses how to respond
+export const respondToSOS = async (req, res) => {
+  const { sosId } = req.params;
+  const { volunteerId, decision } = req.body;
+
+  try {
+    const sos = await SOSAlert.findById(sosId);
+    if (!sos) return res.status(404).json({ message: "SOS Alert not found" });
+
+    if (decision === "accept") {
+      sos.status = "accepted";
+      sos.assignedVolunteer = volunteerId;
+    } else if (decision === "decline") {
+      sos.status = "declined";
+    }
+
+    await sos.save();
+    res.status(200).json({ message: `SOS ${decision}ed`, sos });
+  } catch (err) {
+    res.status(500).json({ message: "Error updating SOS alert", error: err });
+  }
+};
+
+
+// routes/volunteerRoutes.js
+import express from "express";
+import {
+  registerVolunteer, // Feature 1: Volunteer Registration
+  getSOSAlerts,      // Feature 2: Receiving SOS Alerts
+  respondToSOS       // Feature 3: Accept/Decline SOS Requests
+} from "../controllers/volunteerController.js";
+
+const router = express.Router();
+
+// Route for volunteer registration
+router.post("/register", registerVolunteer);
+
+// Route to get pending SOS alerts
+router.get("/sos-alerts", getSOSAlerts);
+
+// Route to respond to SOS alerts
+router.post("/sos-alerts/:sosId/respond", respondToSOS);
+
+export default router;
