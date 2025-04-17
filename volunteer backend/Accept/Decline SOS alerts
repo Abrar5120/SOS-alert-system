@@ -1,0 +1,21 @@
+export const respondToSOS = async (req, res) => {
+  const { sosId } = req.params;
+  const { volunteerId, decision } = req.body;
+
+  try {
+    const sos = await SOSAlert.findById(sosId);
+    if (!sos) return res.status(404).json({ message: "SOS Alert not found" });
+
+    if (decision === "accept") {
+      sos.status = "accepted";
+      sos.assignedVolunteer = volunteerId;
+    } else if (decision === "decline") {
+      sos.status = "declined";
+    }
+
+    await sos.save();
+    res.status(200).json({ message: `SOS ${decision}ed`, sos });
+  } catch (err) {
+    res.status(500).json({ message: "Error updating SOS alert", error: err });
+  }
+};

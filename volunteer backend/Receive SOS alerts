@@ -1,0 +1,13 @@
+import mongoose from "mongoose";
+
+const sosAlertSchema = new mongoose.Schema({
+  userLocation: {
+    lat: Number,
+    lng: Number
+  },
+  message: String,
+  status: { type: String, enum: ["pending", "accepted", "declined", "resolved"], default: "pending" },
+  assignedVolunteer: { type: mongoose.Schema.Types.ObjectId, ref: "Volunteer" },
+}, { timestamps: true });
+
+export default mongoose.model("SOSAlert", sosAlertSchema);
